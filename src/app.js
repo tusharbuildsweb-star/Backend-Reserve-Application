@@ -31,6 +31,7 @@ app.use(express.json());
 // Enable CORS with specific origin for production
 const allowedOrigins = [
     'https://tablereservation1.netlify.app',
+    'https://reserveweb.netlify.app',
     'http://localhost:5173',
 ];
 app.use(cors({

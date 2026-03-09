@@ -5,6 +5,7 @@ const initSocket = (server, app) => {
         cors: {
             origin: [
                 'https://tablereservation1.netlify.app',
+                'https://reserveweb.netlify.app',
                 'http://localhost:5173'
             ],
             methods: ['GET', 'POST'],
