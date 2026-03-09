@@ -16,14 +16,7 @@ const createReservation = async (req, res, next) => {
             });
         }
 
-        // Notification for user
-        const restaurant = await Restaurant.findById(req.body.restaurantId);
-        await notificationService.createNotification(
-            req.user._id,
-            'reservation_confirmed',
-            `Your reservation at ${restaurant?.name || 'the restaurant'} is confirmed.`,
-            '/dashboard/user'
-        );
+
 
         res.status(201).json(data);
     } catch (error) {
