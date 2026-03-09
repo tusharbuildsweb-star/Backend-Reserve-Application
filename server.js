@@ -33,6 +33,7 @@ initSocket(server, app);
 
 // Initialize Cron Jobs
 require('./src/cron/reservationCron');
+require('./src/cron/promotionCron');
 
 const PORT = process.env.PORT || 5000;
 

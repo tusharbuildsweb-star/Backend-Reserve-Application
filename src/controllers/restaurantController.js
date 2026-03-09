@@ -117,6 +117,44 @@ const getFilters = async (req, res, next) => {
     }
 };
 
+const getRecommendations = async (req, res, next) => {
+    try {
+        const restaurantId = req.params.id;
+        const currentRestaurant = await restaurantService.getRestaurantById(restaurantId);
+        
+        if (!currentRestaurant) {
+            return res.status(404).json({ message: 'Restaurant not found' });
+        }
+
+        const Restaurant = require('../models/Restaurant');
+        let recommendations = await Restaurant.find({
+            _id: { $ne: restaurantId },
+            isApproved: true,
+            subscriptionStatus: 'active',
+            cuisine: currentRestaurant.cuisine
+        })
+        .sort({ rating: -1 })
+        .limit(4)
+        .select('name location cuisine rating reviewCount images isApproved subscriptionStatus crowd'); 
+
+        // Fallback: If no restaurants with the exact same cuisine, get highest rated overall
+        if (recommendations.length === 0) {
+            recommendations = await Restaurant.find({
+                _id: { $ne: restaurantId },
+                isApproved: true,
+                subscriptionStatus: 'active'
+            })
+            .sort({ rating: -1 })
+            .limit(4)
+            .select('name location cuisine rating reviewCount images isApproved subscriptionStatus crowd');
+        }
+
+        res.json(recommendations);
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getAllRestaurants,
     searchRestaurants,
@@ -126,5 +164,6 @@ module.exports = {
     updateRestaurant,
     updateCrowdLevel,
     getMenu,
-    getFilters
+    getFilters,
+    getRecommendations
 };

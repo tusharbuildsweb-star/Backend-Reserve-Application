@@ -153,6 +153,36 @@ const joinWaitlist = async (req, res, next) => {
     }
 };
 
+const rescheduleReservation = async (req, res, next) => {
+    try {
+        const data = await reservationService.rescheduleReservation(req.params.id, req.user._id, req.body);
+        res.json(data);
+    } catch (error) {
+        res.status(400);
+        next(error);
+    }
+};
+
+const approveReservation = async (req, res, next) => {
+    try {
+        const data = await reservationService.approveReservation(req.params.id, req.user._id);
+        res.json(data);
+    } catch (error) {
+        res.status(403);
+        next(error);
+    }
+};
+
+const rejectReservation = async (req, res, next) => {
+    try {
+        const data = await reservationService.rejectReservation(req.params.id, req.user._id);
+        res.json(data);
+    } catch (error) {
+        res.status(403);
+        next(error);
+    }
+};
+
 module.exports = {
     createReservation,
     getUserReservations,
@@ -161,5 +191,8 @@ module.exports = {
     updateReservationStatus,
     checkDuplicateBooking,
     getAllBookingsForceTest,
-    joinWaitlist
+    joinWaitlist,
+    rescheduleReservation,
+    approveReservation,
+    rejectReservation
 };

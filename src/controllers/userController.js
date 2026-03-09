@@ -52,10 +52,21 @@ const getFavorites = async (req, res, next) => {
     }
 };
 
+const getRecommendations = async (req, res, next) => {
+    try {
+        const recommendations = await userService.getRecommendations(req.user._id);
+        res.json(recommendations);
+    } catch (error) {
+        res.status(400);
+        next(error);
+    }
+};
+
 module.exports = {
     updateProfile,
     getUserReservations,
     getUserReviews,
     toggleFavorite,
-    getFavorites
+    getFavorites,
+    getRecommendations
 };

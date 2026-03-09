@@ -3,6 +3,7 @@ const Package = require('../models/Package');
 const Menu = require('../models/Menu');
 const TimeSlot = require('../models/TimeSlot');
 const Review = require('../models/Review');
+const Promotion = require('../models/Promotion');
 
 class RestaurantService {
     async getAllRestaurants(query) {
@@ -115,6 +116,39 @@ class RestaurantService {
             restaurants = restaurants.filter(r => isOpen(r.workingHours));
         }
 
+        // 8. Attach Promotion Info & Sort
+        const activePromotions = await Promotion.find({ status: 'active', endDate: { $gte: new Date() } });
+        if (activePromotions.length > 0) {
+            const promoMap = {};
+            activePromotions.forEach(p => {
+                const rId = p.restaurantId.toString();
+                const currentTier = promoMap[rId] ? promoMap[rId].promotionType : null;
+                const weight = { 'Top Homepage': 3, 'Featured': 2, 'Recommended': 1 };
+                if (!currentTier || weight[p.promotionType] > (weight[currentTier] || 0)) {
+                    promoMap[rId] = p;
+                }
+            });
+
+            restaurants = restaurants.map(r => {
+                const rObj = r.toObject ? r.toObject() : r;
+                const promo = promoMap[r._id.toString()];
+                if (promo) {
+                    rObj.isPromoted = true;
+                    rObj.promotionType = promo.promotionType;
+                }
+                return rObj;
+            });
+
+            // Sort: Top Homepage > Featured > Recommended > None, keeping original sorting secondary
+            const weight = { 'Top Homepage': 3, 'Featured': 2, 'Recommended': 1 };
+            restaurants.sort((a, b) => {
+                const wA = a.isPromoted ? weight[a.promotionType] || 0 : 0;
+                const wB = b.isPromoted ? weight[b.promotionType] || 0 : 0;
+                if (wA !== wB) return wB - wA;
+                return 0; // retain original rating-based sorting for ties
+            });
+        }
+
         return restaurants;
     }
 
@@ -124,37 +158,75 @@ class RestaurantService {
         const cuisines = await Restaurant.distinct('cuisine', approvedFilter);
         const locations = await Restaurant.distinct('location', approvedFilter);
         const features = await Restaurant.distinct('facilities', approvedFilter);
+        const ambience = await Restaurant.distinct('ambienceTags', approvedFilter);
 
         return {
             cuisines: cuisines.filter(Boolean).sort(),
             locations: locations.filter(Boolean).sort(),
-            features: features.filter(Boolean).sort()
+            features: features.filter(Boolean).sort(),
+            ambience: ambience.filter(Boolean).sort()
         };
     }
 
     async searchRestaurants(searchStr) {
-        if (!searchStr) return await Restaurant.find({ isApproved: true, subscriptionStatus: 'active' });
+        let restaurants = [];
+        if (!searchStr) {
+            restaurants = await Restaurant.find({ isApproved: true, subscriptionStatus: 'active' });
+        } else {
+            // Find packages that match the search string
+            const matchingPackages = await Package.find({
+                $or: [
+                    { title: { $regex: searchStr, $options: 'i' } },
+                    { description: { $regex: searchStr, $options: 'i' } }
+                ]
+            }).select('restaurantId');
+            const restaurantIdsFromPackages = matchingPackages.map(p => p.restaurantId);
 
-        // Find packages that match the search string
-        const matchingPackages = await Package.find({
-            $or: [
-                { title: { $regex: searchStr, $options: 'i' } },
-                { description: { $regex: searchStr, $options: 'i' } }
-            ]
-        }).select('restaurantId');
-        const restaurantIdsFromPackages = matchingPackages.map(p => p.restaurantId);
+            restaurants = await Restaurant.find({
+                isApproved: true,
+                subscriptionStatus: 'active',
+                $or: [
+                    { name: { $regex: searchStr, $options: 'i' } },
+                    { cuisine: { $regex: searchStr, $options: 'i' } },
+                    { location: { $regex: searchStr, $options: 'i' } },
+                    { _id: { $in: restaurantIdsFromPackages } }
+                ]
+            });
+        }
 
-        return await Restaurant.find({
-            isApproved: true,
-            subscriptionStatus: 'active',
-            $or: [
-                { name: { $regex: searchStr, $options: 'i' } },
-                { cuisine: { $regex: searchStr, $options: 'i' } },
-                { location: { $regex: searchStr, $options: 'i' } },
-                { _id: { $in: restaurantIdsFromPackages } }
-                // Menu items search can be added here if 'menu' is a field in Restaurant model
-            ]
-        });
+        // Attach Promotion Info & Sort
+        const activePromotions = await Promotion.find({ status: 'active', endDate: { $gte: new Date() } });
+        if (activePromotions.length > 0) {
+            const promoMap = {};
+            activePromotions.forEach(p => {
+                const rId = p.restaurantId.toString();
+                const currentTier = promoMap[rId] ? promoMap[rId].promotionType : null;
+                const weight = { 'Top Homepage': 3, 'Featured': 2, 'Recommended': 1 };
+                if (!currentTier || weight[p.promotionType] > (weight[currentTier] || 0)) {
+                    promoMap[rId] = p;
+                }
+            });
+
+            restaurants = restaurants.map(r => {
+                const rObj = r.toObject ? r.toObject() : r;
+                const promo = promoMap[r._id.toString()];
+                if (promo) {
+                    rObj.isPromoted = true;
+                    rObj.promotionType = promo.promotionType;
+                }
+                return rObj;
+            });
+
+            const weight = { 'Top Homepage': 3, 'Featured': 2, 'Recommended': 1 };
+            restaurants.sort((a, b) => {
+                const wA = a.isPromoted ? weight[a.promotionType] || 0 : 0;
+                const wB = b.isPromoted ? weight[b.promotionType] || 0 : 0;
+                if (wA !== wB) return wB - wA;
+                return (b.rating || 0) - (a.rating || 0); // Rating descending as fallback
+            });
+        }
+
+        return restaurants;
     }
 
     async getOwnerRestaurant(ownerId) {

@@ -15,7 +15,21 @@ const initSocket = (server, app) => {
     io.on('connection', (socket) => {
         console.log('New client connected', socket.id);
 
-        // Room joining logic for specific restaurants or admin dashboards
+        // Join a user-specific room for targeted notifications
+        socket.on('joinUser', (userId) => {
+            if (userId) {
+                socket.join(`user_${userId}`);
+                console.log(`Socket ${socket.id} joined room: user_${userId}`);
+            }
+        });
+
+        // Join admin room
+        socket.on('joinAdmin', () => {
+            socket.join('admin');
+            console.log(`Socket ${socket.id} joined admin room`);
+        });
+
+        // Room joining logic for specific restaurants or owner dashboards
         socket.on('joinRestaurant', (restaurantId) => {
             socket.join(`restaurant_${restaurantId}`);
         });

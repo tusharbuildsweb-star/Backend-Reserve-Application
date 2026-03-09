@@ -3,6 +3,7 @@ const Reservation = require('../models/Reservation');
 const Restaurant = require('../models/Restaurant');
 const TimeSlot = require('../models/TimeSlot');
 const User = require('../models/User');
+const Package = require('../models/Package');
 const { logActivity } = require('../utils/activityLogger');
 const Waitlist = require('../models/Waitlist');
 const { getTableType } = require('../controllers/timeSlotController');
@@ -110,8 +111,7 @@ class ReservationService {
             ...data,
             userId,
             ownerId: restaurant.ownerId,
-            lockExpiresAt,
-            status: 'payment_initiated',
+            status: 'pending',
             bookingDateTime,
             advancePaid,
             platformFee,
@@ -148,10 +148,10 @@ class ReservationService {
         });
 
         // Trigger Notification
-        const notificationTitle = 'Reservation Initiated';
+        const notificationTitle = 'Reservation Requested';
         const notificationMessage = data.selectedPackage
-            ? `Your booking for "${data.selectedPackage.title}" at ${restaurant.name} is pending payment.`
-            : `Your reservation at ${restaurant.name} is pending payment.`;
+            ? `Your booking request for "${data.selectedPackage.title}" at ${restaurant.name} has been sent to the owner for approval.`
+            : `Your reservation request at ${restaurant.name} has been sent to the owner for approval.`;
 
         await NotificationService.createNotification(
             userId,
@@ -159,17 +159,80 @@ class ReservationService {
             notificationMessage,
             'reservation',
             'user',
-            `/dashboard/user`
+            `/dashboard/user`,
+            true
         );
 
         // Also notify Owner
         await NotificationService.createNotification(
             restaurant.ownerId,
             'New Reservation Request',
-            `A new reservation request has been received for ${restaurant.name}.`,
+            `A new reservation request has been received for ${restaurant.name}. Please approve or reject it.`,
             'reservation',
             'owner',
-            `/dashboard/owner`
+            `/dashboard/owner`,
+            true
+        );
+
+        return savedReservation;
+    }
+
+    async approveReservation(id, ownerId) {
+        const reservation = await Reservation.findById(id).populate('restaurantId');
+        if (!reservation) throw new Error('Reservation not found');
+        if (reservation.ownerId.toString() !== ownerId.toString()) throw new Error('Not authorized to approve');
+        if (reservation.status !== 'pending') throw new Error('Only pending reservations can be approved');
+
+        reservation.status = 'approved';
+        const savedReservation = await reservation.save();
+
+        if (global.io) {
+            global.io.emit('globalUpdate', { type: 'reservationApproved', reservationId: savedReservation._id });
+        }
+
+        await NotificationService.createNotification(
+            reservation.userId,
+            'Reservation Approved',
+            `Your reservation request at ${reservation.restaurantId.name} has been approved. You can now proceed with payment to confirm your booking.`,
+            'reservation',
+            'user',
+            `/dashboard/user`,
+            true
+        );
+
+        return savedReservation;
+    }
+
+    async rejectReservation(id, ownerId) {
+        const reservation = await Reservation.findById(id).populate('restaurantId');
+        if (!reservation) throw new Error('Reservation not found');
+        if (reservation.ownerId.toString() !== ownerId.toString()) throw new Error('Not authorized to reject');
+        if (reservation.status !== 'pending') throw new Error('Only pending reservations can be rejected');
+
+        reservation.status = 'rejected';
+
+        // Free up the table slot since it was rejected
+        if (reservation.slotId) {
+            const tableType = getTableType(reservation.guests);
+            await TimeSlot.findByIdAndUpdate(reservation.slotId, {
+                $inc: { [`booked.${tableType}`]: -1 }
+            });
+        }
+
+        const savedReservation = await reservation.save();
+
+        if (global.io) {
+            global.io.emit('globalUpdate', { type: 'reservationRejected', reservationId: savedReservation._id });
+        }
+
+        await NotificationService.createNotification(
+            reservation.userId,
+            'Reservation Rejected',
+            `Your reservation request at ${reservation.restaurantId.name} was rejected by the restaurant owner.`,
+            'reservation',
+            'user',
+            `/dashboard/user`,
+            true
         );
 
         return savedReservation;
@@ -186,13 +249,15 @@ class ReservationService {
 
         return {
             upcoming: reservations.filter(r =>
-                (r.status === 'confirmed' && new Date(r.bookingDateTime) >= gracePeriod)
+                (['confirmed', 'pending', 'approved'].includes(r.status) && new Date(r.bookingDateTime) >= gracePeriod) || 
+                (r.status === 'payment_initiated')
             ),
             history: reservations.filter(r =>
                 r.status === 'cancelled' ||
                 r.status === 'completed' ||
+                r.status === 'rejected' ||
                 r.status === 'payment_failed' ||
-                (r.status === 'confirmed' && new Date(r.bookingDateTime) < gracePeriod) ||
+                (['confirmed', 'pending', 'approved'].includes(r.status) && new Date(r.bookingDateTime) < gracePeriod) ||
                 (r.status === 'payment_initiated' && (new Date(r.lockExpiresAt) <= now || !r.lockExpiresAt))
             )
         };
@@ -230,6 +295,99 @@ class ReservationService {
                 totalAmount: booking.totalPaidNow
             }
         };
+    }
+
+    async rescheduleReservation(id, userId, data) {
+        const reservation = await Reservation.findById(id).populate('restaurantId');
+        if (!reservation) throw new Error('Reservation not found');
+        if (reservation.userId.toString() !== userId.toString()) {
+            throw new Error('Not authorized to reschedule this reservation');
+        }
+
+        if (reservation.status !== 'confirmed') {
+            throw new Error('Only confirmed reservations can be rescheduled');
+        }
+
+        const now = new Date();
+        const oldBookingTime = new Date(reservation.bookingDateTime);
+        
+        // Don't allow rescheduling if it's already within 2 hours of the original booking
+        const hoursUntilOldBooking = (oldBookingTime - now) / (1000 * 60 * 60);
+        if (hoursUntilOldBooking < 2) {
+            throw new Error('Cannot reschedule within 2 hours of your reservation. Please cancel and rebook.');
+        }
+
+        const newSlot = await TimeSlot.findById(data.slotId);
+        if (!newSlot) throw new Error('New time slot not found');
+        if (!newSlot.isActive) throw new Error('New time slot is no longer active');
+
+        const newTableType = getTableType(data.guests);
+        const cap = newSlot.capacity[newTableType] || 0;
+        const bkd = newSlot.booked[newTableType] || 0;
+
+        if (cap === 0) throw new Error(`No ${newTableType.replace(/([A-Z])/g, ' $1').toLowerCase()} tables configured for this slot.`);
+        if (bkd >= cap) throw new Error('The selected table type is fully booked for the new slot.');
+
+        // Parse new bookingDateTime
+        let newBookingDateTime = new Date(`${data.date}T12:00:00.000Z`);
+        const timeMatch = data.time.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (timeMatch) {
+            let [_, hrs, mins, modifier] = timeMatch;
+            hrs = parseInt(hrs);
+            if (modifier.toUpperCase() === 'PM' && hrs < 12) hrs += 12;
+            if (modifier.toUpperCase() === 'AM' && hrs === 12) hrs = 0;
+            const isoDate = new Date(data.date).toISOString().split('T')[0];
+            newBookingDateTime = new Date(`${isoDate}T${hrs.toString().padStart(2, '0')}:${mins}:00.000Z`);
+        } else {
+            const isoDate = new Date(data.date).toISOString().split('T')[0];
+            newBookingDateTime = new Date(`${isoDate}T${data.time}:00.000Z`);
+        }
+
+        // 1. Free up old slot
+        const oldSlotId = reservation.slotId;
+        const oldTableType = getTableType(reservation.guests);
+        if (oldSlotId) {
+            await TimeSlot.findByIdAndUpdate(oldSlotId, {
+                $inc: { [`booked.${oldTableType}`]: -1 }
+            });
+        }
+
+        // 2. Reserve new slot
+        await TimeSlot.findByIdAndUpdate(newSlot._id, {
+            $inc: { [`booked.${newTableType}`]: 1 }
+        });
+
+        // 3. Update reservation
+        reservation.date = data.date;
+        reservation.time = data.time;
+        reservation.guests = data.guests;
+        reservation.slotId = data.slotId;
+        reservation.bookingDateTime = newBookingDateTime;
+        
+        const savedReservation = await reservation.save();
+
+        if (global.io) {
+            global.io.emit('tableBooked', { restaurantId: reservation.restaurantId._id, reservation: savedReservation });
+            global.io.emit('globalUpdate', { type: 'reservation_rescheduled', reservationId: savedReservation._id });
+        }
+
+        await logActivity(userId, 'reservation_rescheduled', {
+            restaurantId: reservation.restaurantId._id,
+            reservationId: savedReservation._id,
+            newDate: data.date,
+            newTime: data.time
+        });
+
+        await NotificationService.createNotification(
+            userId,
+            'Reservation Rescheduled',
+            `Your reservation at ${reservation.restaurantId.name} has been modified to ${data.date} at ${data.time}.`,
+            'reservation',
+            'user',
+            `/dashboard/user`
+        );
+
+        return savedReservation;
     }
 
     async cancelReservation(id, userId) {

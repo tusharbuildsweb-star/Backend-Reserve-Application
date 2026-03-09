@@ -19,6 +19,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 const menuRoutes = require('./routes/menuRoutes');
 const testimonialRoutes = require('./routes/testimonialRoutes');
+const promotionRoutes = require('./routes/promotionRoutes');
 
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
@@ -73,6 +74,7 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/contact', contactRoutes);
 app.use('/api/v1/menu', menuRoutes);
 app.use('/api/v1/testimonials', testimonialRoutes);
+app.use('/api/v1/promotions', promotionRoutes);
 
 // Direct menu route as requested by frontend
 const { getMenu } = require('./controllers/restaurantController');

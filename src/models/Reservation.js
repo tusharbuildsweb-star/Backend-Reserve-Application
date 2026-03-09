@@ -66,8 +66,8 @@ const reservationSchema = new mongoose.Schema({
     lockExpiresAt: { type: Date },                    // 5-min window for payment
     status: {
         type: String,
-        enum: ['draft', 'payment_initiated', 'payment_failed', 'confirmed', 'cancelled', 'completed'],
-        default: 'payment_initiated'
+        enum: ['pending', 'approved', 'rejected', 'draft', 'payment_initiated', 'payment_failed', 'confirmed', 'cancelled', 'completed'],
+        default: 'pending'
     },
     paymentStatus: {
         type: String,

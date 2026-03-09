@@ -9,7 +9,8 @@ const {
     updateRestaurant,
     updateCrowdLevel,
     getMenu,
-    getFilters
+    getFilters,
+    getRecommendations
 } = require('../controllers/restaurantController');
 const { protect } = require('../middleware/authMiddleware');
 const { authorizeRoles } = require('../middleware/roleMiddleware');
@@ -25,6 +26,7 @@ router.post('/', protect, authorizeRoles('owner', 'admin'), createRestaurant);
 
 // ── Wildcard (id-based) routes — always last ────────────────────────────────────
 router.get('/:id', getRestaurantById);
+router.get('/:id/recommendations', getRecommendations);
 router.get('/:id/menu', getMenu);
 router.put('/:id', protect, authorizeRoles('owner', 'admin'), updateRestaurant);
 router.put('/:id/crowd', protect, authorizeRoles('owner', 'admin'), updateCrowdLevel);

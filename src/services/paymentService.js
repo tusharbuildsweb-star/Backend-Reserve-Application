@@ -12,6 +12,10 @@ class PaymentService {
         const reservation = await Reservation.findById(reservationId);
         if (!reservation) throw new Error('Reservation not found');
 
+        if (reservation.status !== 'approved' && reservation.status !== 'payment_initiated') {
+            throw new Error('Payment can only be initiated for approved reservations');
+        }
+
         // Always calculate total in backend
         const advance = 200;
         const preorderTotal = (reservation.preorderItems || []).reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -24,6 +28,8 @@ class PaymentService {
         reservation.preorderTotal = preorderTotal;
         reservation.platformFee = platformFee;
         reservation.totalPaidNow = total;
+        reservation.status = 'payment_initiated';
+        reservation.lockExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
         await reservation.save();
 
         const options = {

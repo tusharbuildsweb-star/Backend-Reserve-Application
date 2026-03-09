@@ -14,10 +14,15 @@ const createOrder = async (req, res, next) => {
 const verifyPayment = async (req, res, next) => {
     try {
         const {
-            razorpayOrderId,
-            razorpayPaymentId,
-            razorpaySignature,
+            razorpay_order_id: razorpayOrderId,
+            razorpay_payment_id: razorpayPaymentId,
+            razorpay_signature: razorpaySignature,
         } = req.body;
+
+        if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+            res.status(400);
+            return next(new Error('Missing required payment verification fields.'));
+        }
 
         const data = await paymentService.verifyPayment(
             razorpayOrderId,
