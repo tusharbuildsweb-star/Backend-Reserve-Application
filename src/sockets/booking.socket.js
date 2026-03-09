@@ -6,6 +6,7 @@ const initSocket = (server, app) => {
             origin: [
                 'https://tablereservation1.netlify.app',
                 'https://reserveweb.netlify.app',
+                'https://frontend-reserve-application.vercel.app',
                 'http://localhost:5173'
             ],
             methods: ['GET', 'POST'],

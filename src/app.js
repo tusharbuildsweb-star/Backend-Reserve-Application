@@ -32,6 +32,7 @@ app.use(express.json());
 const allowedOrigins = [
     'https://tablereservation1.netlify.app',
     'https://reserveweb.netlify.app',
+    'https://frontend-reserve-application.vercel.app',
     'http://localhost:5173',
 ];
 app.use(cors({
