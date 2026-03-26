@@ -2,6 +2,14 @@
 
 The backend power behind the RESERVE platform, providing a robust, secure, and real-time infrastructure for restaurant reservations, user reviews, and administrative management.
 
+## 🔑 Test Credentials
+
+| Account Role | Email | Password |
+| :--- | :--- | :--- |
+| **Admin** | `root@admin.com` | `Password@123` |
+| **Owner** | `thiru3210@gmail.com` | `Password@123` |
+| **User** | `testuser@test.com` | `Password@123` |
+
 ## 🚀 Technology Stack
 
 - **Runtime**: Node.js
@@ -86,10 +94,4 @@ backend/
     npm run create-admin
     ```
 
-## 🔑 Test Credentials
 
-| Account Role | Email | Password |
-| :--- | :--- | :--- |
-| **Admin** | `root@admin.com` | `Password@123` |
-| **Owner** | `thiru3210@gmail.com` | `Password@123` |
-| **User** | `testuser@test.com` | `Password@123` |
