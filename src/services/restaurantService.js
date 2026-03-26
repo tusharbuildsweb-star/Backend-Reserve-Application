@@ -4,6 +4,15 @@ const Menu = require('../models/Menu');
 const TimeSlot = require('../models/TimeSlot');
 const Review = require('../models/Review');
 const Promotion = require('../models/Promotion');
+const PromotionPackage = require('../models/PromotionPackage');
+
+// Helper: build weight map from PromotionPackage collection
+async function getPromoWeightMap() {
+    const pkgs = await PromotionPackage.find({ isActive: true });
+    const map = {};
+    pkgs.forEach(p => { map[p.name] = p.weight || 1; });
+    return map;
+}
 
 class RestaurantService {
     async getAllRestaurants(query) {
@@ -119,12 +128,12 @@ class RestaurantService {
         // 8. Attach Promotion Info & Sort
         const activePromotions = await Promotion.find({ status: 'active', endDate: { $gte: new Date() } });
         if (activePromotions.length > 0) {
+            const weight = await getPromoWeightMap();
             const promoMap = {};
             activePromotions.forEach(p => {
                 const rId = p.restaurantId.toString();
                 const currentTier = promoMap[rId] ? promoMap[rId].promotionType : null;
-                const weight = { 'Top Homepage': 3, 'Featured': 2, 'Recommended': 1 };
-                if (!currentTier || weight[p.promotionType] > (weight[currentTier] || 0)) {
+                if (!currentTier || (weight[p.promotionType] || 0) > (weight[currentTier] || 0)) {
                     promoMap[rId] = p;
                 }
             });
@@ -139,13 +148,11 @@ class RestaurantService {
                 return rObj;
             });
 
-            // Sort: Top Homepage > Featured > Recommended > None, keeping original sorting secondary
-            const weight = { 'Top Homepage': 3, 'Featured': 2, 'Recommended': 1 };
             restaurants.sort((a, b) => {
                 const wA = a.isPromoted ? weight[a.promotionType] || 0 : 0;
                 const wB = b.isPromoted ? weight[b.promotionType] || 0 : 0;
                 if (wA !== wB) return wB - wA;
-                return 0; // retain original rating-based sorting for ties
+                return 0;
             });
         }
 
@@ -197,12 +204,12 @@ class RestaurantService {
         // Attach Promotion Info & Sort
         const activePromotions = await Promotion.find({ status: 'active', endDate: { $gte: new Date() } });
         if (activePromotions.length > 0) {
+            const weight = await getPromoWeightMap();
             const promoMap = {};
             activePromotions.forEach(p => {
                 const rId = p.restaurantId.toString();
                 const currentTier = promoMap[rId] ? promoMap[rId].promotionType : null;
-                const weight = { 'Top Homepage': 3, 'Featured': 2, 'Recommended': 1 };
-                if (!currentTier || weight[p.promotionType] > (weight[currentTier] || 0)) {
+                if (!currentTier || (weight[p.promotionType] || 0) > (weight[currentTier] || 0)) {
                     promoMap[rId] = p;
                 }
             });
@@ -217,12 +224,11 @@ class RestaurantService {
                 return rObj;
             });
 
-            const weight = { 'Top Homepage': 3, 'Featured': 2, 'Recommended': 1 };
             restaurants.sort((a, b) => {
                 const wA = a.isPromoted ? weight[a.promotionType] || 0 : 0;
                 const wB = b.isPromoted ? weight[b.promotionType] || 0 : 0;
                 if (wA !== wB) return wB - wA;
-                return (b.rating || 0) - (a.rating || 0); // Rating descending as fallback
+                return (b.rating || 0) - (a.rating || 0);
             });
         }
 

@@ -85,3 +85,11 @@ backend/
     ```bash
     npm run create-admin
     ```
+
+## 🔑 Test Credentials
+
+| Account Role | Email | Password |
+| :--- | :--- | :--- |
+| **Admin** | `root@admin.com` | `Password@123` |
+| **Owner** | `thiru3210@gmail.com` | `Password@123` |
+| **User** | `testuser@test.com` | `Password@123` |

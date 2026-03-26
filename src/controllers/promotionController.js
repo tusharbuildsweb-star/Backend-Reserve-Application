@@ -52,6 +52,7 @@ const approvePromotion = async (req, res, next) => {
         const promotion = await promotionService.approvePromotion(req.params.id, req.user._id);
         if (global.io) {
             global.io.emit('promotionEvent', { type: 'approved', promotionId: promotion._id });
+            global.io.emit('globalUpdate', { type: 'promotionApproved' });
         }
         res.json(promotion);
     } catch (error) {
@@ -66,6 +67,7 @@ const rejectPromotion = async (req, res, next) => {
         const promotion = await promotionService.rejectPromotion(req.params.id, adminMessage);
         if (global.io) {
             global.io.emit('promotionEvent', { type: 'rejected', promotionId: promotion._id });
+            global.io.emit('globalUpdate', { type: 'promotionRejected' });
         }
         res.json(promotion);
     } catch (error) {

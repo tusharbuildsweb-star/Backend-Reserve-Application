@@ -127,6 +127,8 @@ const getRecommendations = async (req, res, next) => {
         }
 
         const Restaurant = require('../models/Restaurant');
+        const Promotion = require('../models/Promotion');
+
         let recommendations = await Restaurant.find({
             _id: { $ne: restaurantId },
             isApproved: true,
@@ -134,7 +136,7 @@ const getRecommendations = async (req, res, next) => {
             cuisine: currentRestaurant.cuisine
         })
         .sort({ rating: -1 })
-        .limit(4)
+        .limit(8)
         .select('name location cuisine rating reviewCount images isApproved subscriptionStatus crowd'); 
 
         // Fallback: If no restaurants with the exact same cuisine, get highest rated overall
@@ -145,11 +147,47 @@ const getRecommendations = async (req, res, next) => {
                 subscriptionStatus: 'active'
             })
             .sort({ rating: -1 })
-            .limit(4)
+            .limit(8)
             .select('name location cuisine rating reviewCount images isApproved subscriptionStatus crowd');
         }
 
-        res.json(recommendations);
+        // Attach promotion info & sort promoted restaurants to the top
+        const activePromotions = await Promotion.find({ status: 'active', endDate: { $gte: new Date() } });
+        if (activePromotions.length > 0) {
+            const PromotionPackage = require('../models/PromotionPackage');
+            const pkgs = await PromotionPackage.find({ isActive: true });
+            const weight = {};
+            pkgs.forEach(p => { weight[p.name] = p.weight || 1; });
+
+            const promoMap = {};
+            activePromotions.forEach(p => {
+                const rId = p.restaurantId.toString();
+                const currentTier = promoMap[rId] ? promoMap[rId].promotionType : null;
+                if (!currentTier || (weight[p.promotionType] || 0) > (weight[currentTier] || 0)) {
+                    promoMap[rId] = p;
+                }
+            });
+
+            recommendations = recommendations.map(r => {
+                const rObj = r.toObject ? r.toObject() : r;
+                const promo = promoMap[r._id.toString()];
+                if (promo) {
+                    rObj.isPromoted = true;
+                    rObj.promotionType = promo.promotionType;
+                }
+                return rObj;
+            });
+
+            recommendations.sort((a, b) => {
+                const wA = a.isPromoted ? weight[a.promotionType] || 0 : 0;
+                const wB = b.isPromoted ? weight[b.promotionType] || 0 : 0;
+                if (wA !== wB) return wB - wA;
+                return 0;
+            });
+        }
+
+        // Return top 4 after sorting
+        res.json(recommendations.slice(0, 4));
     } catch (error) {
         next(error);
     }

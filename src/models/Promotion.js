@@ -13,7 +13,6 @@ const promotionSchema = new mongoose.Schema({
     },
     promotionType: {
         type: String,
-        enum: ['Featured', 'Top Homepage', 'Recommended'],
         required: true
     },
     startDate: {
